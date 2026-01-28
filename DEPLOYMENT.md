@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project uses **Terragrunt** for infrastructure deployment and **GitHub Actions** with a reusable workflow for CI/CD automation. The infrastructure is organized as a module under `module/aws/rules-engine/`.
+This project uses **Terragrunt** for infrastructure deployment and **GitHub Actions** with a reusable workflow for CI/CD automation. The infrastructure is organized as a module under `module/aws/rules-engine/`, with scripts co-located with their respective infrastructure components.
 
 ## Prerequisites
 
@@ -11,6 +11,35 @@ This project uses **Terragrunt** for infrastructure deployment and **GitHub Acti
 - Self-hosted runner: `MA-Analytics-Runner` (configured in workflow)
 - GitHub Secrets configured (see below)
 - Environment variable files (`.env.*`) configured
+
+## Project Structure
+
+### Script Organization
+
+Scripts are organized within the module structure:
+
+```
+module/aws/rules-engine/
+├── shared/                    # Shared Python libraries
+│   ├── connectors/            # Data source connectors
+│   ├── rules/                 # Rules engine core
+│   ├── metadata/              # Database models & repository
+│   └── utils/                 # Utilities
+├── modules/
+│   ├── glue/
+│   │   └── scripts/           # Glue job scripts
+│   │       └── bulk_validator.py
+│   └── lambda/
+│       └── scripts/           # Lambda function code
+│           ├── rule_executor/
+│           └── api_gateway/
+```
+
+**Key Benefits:**
+- Scripts deploy automatically with infrastructure
+- Terraform handles packaging and deployment
+- No separate packaging scripts needed
+- Shared libraries automatically included
 
 ## GitHub Actions Setup
 
@@ -43,23 +72,7 @@ DATABASE_SUBNET_IDS=subnet-xxx,subnet-yyy
 LAMBDA_SUBNET_IDS=subnet-xxx,subnet-yyy
 ```
 
-**`.env.test`**:
-```bash
-REGION=us-east-1
-ACCOUNT_NUMBER=123456789012
-VPC_ID=vpc-xxxxxxxxx
-DATABASE_SUBNET_IDS=subnet-xxx,subnet-yyy
-LAMBDA_SUBNET_IDS=subnet-xxx,subnet-yyy
-```
-
-**`.env.prod`**:
-```bash
-REGION=us-east-1
-ACCOUNT_NUMBER=123456789012
-VPC_ID=vpc-xxxxxxxxx
-DATABASE_SUBNET_IDS=subnet-xxx,subnet-yyy
-LAMBDA_SUBNET_IDS=subnet-xxx,subnet-yyy
-```
+**`.env.test`** and **`.env.prod`**: Similar structure with appropriate values
 
 ### 3. Configure GitHub Environments
 
@@ -94,8 +107,9 @@ The workflow will:
 2. Set up GitHub read access token
 3. Load environment variables from `.env` files
 4. Authenticate to AWS via OIDC
-5. Package Lambda functions
-6. Run Terragrunt action (plan/apply/destroy)
+5. Run Terragrunt action (plan/apply/destroy)
+   - Terraform automatically packages Lambda functions
+   - Terraform automatically uploads Glue scripts to S3
 
 ### Method 2: Local Terragrunt
 
@@ -118,50 +132,39 @@ terragrunt init
 # Plan
 terragrunt plan
 
-# Apply
+# Apply (Terraform will automatically package and deploy scripts)
 terragrunt apply
 
 # Destroy
 terragrunt destroy
 ```
 
-## Module Structure
+## How Scripts Are Deployed
 
-The Terraform module is located at `module/aws/rules-engine/`:
+### Glue Scripts
 
-```
-module/aws/rules-engine/
-├── main.tf              # Main infrastructure
-├── variables.tf         # Input variables
-├── outputs.tf           # Output values
-├── versions.tf          # Provider versions
-├── terragrunt.hcl       # Terragrunt configuration
-└── modules/             # Reusable Terraform modules
-    ├── s3/
-    ├── database/
-    ├── lambda/
-    ├── glue/
-    ├── api_gateway/
-    ├── iam/
-    ├── secrets/
-    ├── eventbridge/
-    └── monitoring/
-```
+1. **Location**: `module/aws/rules-engine/modules/glue/scripts/`
+2. **Deployment**: Terraform automatically:
+   - Uploads all Python files from `scripts/` to S3 (`s3://code-bucket/glue/scripts/`)
+   - Uploads shared libraries to S3 (`s3://code-bucket/glue/shared/`)
+   - Configures Glue job to use the script from S3
+   - Sets `--extra-py-files` to include shared libraries
 
-## Terragrunt Configuration
+### Lambda Functions
 
-The `terragrunt.hcl` file:
-- Maps GitHub Actions environment variables to Terraform variables
-- Generates provider configuration
-- Sets environment-specific defaults
-- Configures resource tags
+1. **Location**: `module/aws/rules-engine/modules/lambda/scripts/`
+2. **Deployment**: Terraform automatically:
+   - Copies Lambda code from `scripts/{lambda_name}/`
+   - Copies shared libraries from `../../shared/`
+   - Creates ZIP package
+   - Deploys to Lambda
 
-Key mappings:
-- `TF_VAR_env` → `var.env` → `local.env`
-- `TF_VAR_region` → `var.region`
-- `TF_VAR_account_number` → `var.account_number`
-- `TF_VAR_repo_name` → `var.repo_name`
-- `TF_VAR_branch_name` → `var.branch_name`
+### Shared Libraries
+
+1. **Location**: `module/aws/rules-engine/shared/`
+2. **Usage**: Automatically included in:
+   - Lambda function packages
+   - Glue job extra Python files
 
 ## Post-Deployment Steps
 
@@ -183,19 +186,7 @@ psql -h $DB_ENDPOINT -U rulesadmin -d rules_engine_dev \
   -f ../../../sql/metadata_schema.sql
 ```
 
-### 2. Package and Upload Lambda Functions
-
-The GitHub Actions workflow automatically packages Lambda functions. For manual packaging:
-
-```bash
-./scripts/package_lambdas.sh
-
-# Upload to S3 (get bucket from Terraform output)
-CODE_BUCKET=$(cd module/aws/rules-engine && terragrunt output -raw code_bucket_name)
-aws s3 sync module/aws/rules-engine/lambda_packages/ s3://$CODE_BUCKET/lambda-packages/
-```
-
-### 3. Verify Deployment
+### 2. Verify Deployment
 
 ```bash
 cd module/aws/rules-engine
@@ -247,29 +238,42 @@ terragrunt init
 terragrunt validate
 ```
 
-### Lambda Deployment Issues
+### Script Deployment Issues
 
-1. Verify Lambda packages are uploaded to S3
-2. Check Lambda function logs in CloudWatch
-3. Ensure IAM roles have correct permissions
-4. Verify VPC configuration if Lambda needs database access
+1. **Glue scripts not found**: Check S3 bucket for uploaded scripts
+   ```bash
+   aws s3 ls s3://code-bucket/glue/scripts/
+   ```
 
-## Rollback
+2. **Lambda import errors**: Verify shared libraries are in package
+   ```bash
+   unzip -l module/aws/rules-engine/lambda_packages/rule_executor.zip | grep -E "(connectors|rules|metadata|utils)"
+   ```
 
-If deployment fails:
+3. **Missing dependencies**: Ensure all imports use relative paths from shared directory
 
-1. Check Terragrunt state: `terragrunt show`
-2. Review CloudWatch logs
-3. Fix issues in code
-4. Re-run deployment workflow with `action: apply`
+## Making Changes to Scripts
 
-To rollback to previous version:
+### Updating Glue Scripts
 
-```bash
-cd module/aws/rules-engine
-terragrunt state list  # See current resources
-# Manually remove problematic resources or restore from backup
-```
+1. Edit script in `module/aws/rules-engine/modules/glue/scripts/`
+2. Commit and push
+3. Deploy via GitHub Actions or `terragrunt apply`
+4. Terraform will detect changes and re-upload to S3
+
+### Updating Lambda Functions
+
+1. Edit code in `module/aws/rules-engine/modules/lambda/scripts/{lambda_name}/`
+2. Commit and push
+3. Deploy via GitHub Actions or `terragrunt apply`
+4. Terraform will detect changes and re-package Lambda
+
+### Updating Shared Libraries
+
+1. Edit code in `module/aws/rules-engine/shared/`
+2. Commit and push
+3. Deploy via GitHub Actions or `terragrunt apply`
+4. Terraform will detect changes and update both Lambda and Glue
 
 ## Best Practices
 
@@ -281,6 +285,7 @@ terragrunt state list  # See current resources
 6. **Set up CloudWatch alarms** for monitoring
 7. **Regular backups** of Terragrunt state
 8. **Protect production environment** with approval requirements
+9. **Test script changes** in dev before deploying to prod
 
 ## Security Considerations
 
@@ -305,3 +310,4 @@ The workflow uses the shared action `zilvertonz/shared-github-actions/deploy/ter
 - Terraform workspace management
 - State locking
 - Plan/apply/destroy operations
+- Automatic script packaging and deployment

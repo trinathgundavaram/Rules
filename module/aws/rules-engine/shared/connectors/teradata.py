@@ -1,17 +1,17 @@
-"""SQL Server connector implementation."""
+"""Teradata connector implementation."""
 
 from typing import Any, Dict, List, Optional
 
 from pyspark.sql import DataFrame
 from pyspark.sql import SparkSession
 
-from src.connectors.base import BaseConnector
-from src.utils.exceptions import ConnectionError, ConnectorException
-from src.utils.logger import get_logger
+from connectors.base import BaseConnector
+from utils.exceptions import ConnectionError, ConnectorException
+from utils.logger import get_logger
 
 
-class SQLServerConnector(BaseConnector):
-    """Connector for SQL Server data sources."""
+class TeradataConnector(BaseConnector):
+    """Connector for Teradata data sources."""
 
     def __init__(
         self,
@@ -19,79 +19,74 @@ class SQLServerConnector(BaseConnector):
         spark_session: Optional[SparkSession] = None,
     ):
         """
-        Initialize SQL Server connector.
+        Initialize Teradata connector.
 
         Args:
-            connection_config: Must contain 'server', 'database', 'username',
-                              'password', and optionally 'port', 'schema'
+            connection_config: Must contain 'host', 'database', 'username',
+                              'password', and optionally 'port', 'logmech'
             spark_session: Spark session (required)
         """
         super().__init__(connection_config, spark_session)
-        self.server = connection_config.get("server")
-        self.port = connection_config.get("port", 1433)
+        self.host = connection_config.get("host")
+        self.port = connection_config.get("port", 1025)
         self.database = connection_config.get("database")
         self.username = connection_config.get("username")
         self.password = connection_config.get("password")
-        self.schema = connection_config.get("schema", "dbo")
-        self.encrypt = connection_config.get("encrypt", True)
-        self.trust_server_certificate = connection_config.get(
-            "trust_server_certificate", False
-        )
+        self.logmech = connection_config.get("logmech", "LDAP")
 
-        if not all([self.server, self.database, self.username, self.password]):
+        if not all([self.host, self.database, self.username, self.password]):
             raise ConnectorException(
-                "SQL Server connection requires server, database, username, and password"
+                "Teradata connection requires host, database, username, and password"
             )
 
         if not self.spark_session:
-            raise ConnectorException("Spark session is required for SQL Server connector")
+            raise ConnectorException("Spark session is required for Teradata connector")
 
     def connect(self) -> None:
-        """Establish connection to SQL Server."""
+        """Establish connection to Teradata."""
         try:
             self.logger.info(
-                "Connecting to SQL Server",
-                server=self.server,
+                "Connecting to Teradata",
+                host=self.host,
                 database=self.database,
             )
 
-            # Configure Spark JDBC connection
+            # Teradata uses JDBC with specific driver
             jdbc_url = (
-                f"jdbc:sqlserver://{self.server}:{self.port};"
-                f"database={self.database};"
-                f"encrypt={str(self.encrypt).lower()};"
-                f"trustServerCertificate={str(self.trust_server_certificate).lower()}"
+                f"jdbc:teradata://{self.host}/"
+                f"DATABASE={self.database},"
+                f"LOGMECH={self.logmech}"
             )
 
-            # Test connection with a simple query
+            # Test connection
             test_df = (
                 self.spark_session.read.format("jdbc")
                 .option("url", jdbc_url)
                 .option("dbtable", "(SELECT 1 AS test) AS t")
                 .option("user", self.username)
                 .option("password", self.password)
+                .option("driver", "com.teradata.jdbc.TeraDriver")
                 .load()
             )
             test_df.collect()
 
             self._is_connected = True
-            self.logger.info("Successfully connected to SQL Server")
+            self.logger.info("Successfully connected to Teradata")
 
         except Exception as e:
-            raise ConnectionError(f"Failed to connect to SQL Server: {str(e)}") from e
+            raise ConnectionError(f"Failed to connect to Teradata: {str(e)}") from e
 
     def disconnect(self) -> None:
-        """Close SQL Server connection."""
+        """Close Teradata connection."""
         self._is_connected = False
-        self.logger.info("Disconnected from SQL Server")
+        self.logger.info("Disconnected from Teradata")
 
     def _get_jdbc_url(self) -> str:
-        """Get JDBC URL for SQL Server."""
+        """Get JDBC URL for Teradata."""
         return (
-            f"jdbc:sqlserver://{self.server}:{self.port};"
-            f"database={self.database};"
-            f"encrypt={str(self.encrypt).lower()};"
-            f"trustServerCertificate={str(self.trust_server_certificate).lower()}"
+            f"jdbc:teradata://{self.host}/"
+            f"DATABASE={self.database},"
+            f"LOGMECH={self.logmech}"
         )
 
     def read_data(
@@ -104,13 +99,13 @@ class SQLServerConnector(BaseConnector):
         limit: Optional[int] = None,
     ) -> DataFrame:
         """
-        Read data from SQL Server.
+        Read data from Teradata.
 
         Args:
             query: SQL query (preferred method)
-            table: Table name (used with schema)
-            schema: Schema name (defaults to configured schema)
-            filters: Pushdown filters (limited support)
+            table: Table name
+            schema: Database name (defaults to configured database)
+            filters: Pushdown filters
             columns: Columns to select
             limit: Maximum rows to return
 
@@ -121,40 +116,37 @@ class SQLServerConnector(BaseConnector):
 
         try:
             jdbc_url = self._get_jdbc_url()
-            schema_name = schema or self.schema
+            database = schema or self.database
 
             if query:
-                self.logger.info("Executing SQL query on SQL Server")
-                # Use query parameter for custom SQL
+                self.logger.info("Executing SQL query on Teradata")
                 df = (
                     self.spark_session.read.format("jdbc")
                     .option("url", jdbc_url)
                     .option("query", query)
                     .option("user", self.username)
                     .option("password", self.password)
+                    .option("driver", "com.teradata.jdbc.TeraDriver")
                     .load()
                 )
             elif table:
-                full_table_name = f"{schema_name}.{table}"
-                self.logger.info("Reading table from SQL Server", table=full_table_name)
+                full_table_name = f"{database}.{table}"
+                self.logger.info("Reading table from Teradata", table=full_table_name)
                 df = (
                     self.spark_session.read.format("jdbc")
                     .option("url", jdbc_url)
                     .option("dbtable", full_table_name)
                     .option("user", self.username)
                     .option("password", self.password)
+                    .option("driver", "com.teradata.jdbc.TeraDriver")
                     .load()
                 )
             else:
                 raise ConnectorException("Either query or table must be provided")
 
-            # Apply filters (pushdown may be limited)
             df = self._apply_filters(df, filters)
-
-            # Select columns
             df = self._select_columns(df, columns)
 
-            # Apply limit
             if limit:
                 df = df.limit(limit)
 
@@ -162,7 +154,7 @@ class SQLServerConnector(BaseConnector):
 
         except Exception as e:
             raise ConnectorException(
-                f"Failed to read data from SQL Server: {str(e)}"
+                f"Failed to read data from Teradata: {str(e)}"
             ) from e
 
     def write_results(
@@ -173,33 +165,35 @@ class SQLServerConnector(BaseConnector):
         partition_by: Optional[List[str]] = None,
     ) -> None:
         """
-        Write results to SQL Server table.
+        Write results to Teradata table.
 
         Args:
             data: DataFrame to write
-            destination: Table name (can include schema.table)
-            mode: Write mode (overwrite, append)
-            partition_by: Not supported for SQL Server
+            destination: Table name
+            mode: Write mode
+            partition_by: Not supported for Teradata
         """
         self._validate_connection()
 
         if partition_by:
-            self.logger.warning("Partitioning not supported for SQL Server writes")
+            self.logger.warning("Partitioning not supported for Teradata writes")
 
-        self.logger.info("Writing data to SQL Server", destination=destination, mode=mode)
+        self.logger.info("Writing data to Teradata", destination=destination, mode=mode)
 
         try:
             jdbc_url = self._get_jdbc_url()
 
             data.write.format("jdbc").mode(mode).option("url", jdbc_url).option(
                 "dbtable", destination
-            ).option("user", self.username).option("password", self.password).save()
+            ).option("user", self.username).option("password", self.password).option(
+                "driver", "com.teradata.jdbc.TeraDriver"
+            ).save()
 
-            self.logger.info("Successfully wrote data to SQL Server")
+            self.logger.info("Successfully wrote data to Teradata")
 
         except Exception as e:
             raise ConnectorException(
-                f"Failed to write data to SQL Server: {str(e)}"
+                f"Failed to write data to Teradata: {str(e)}"
             ) from e
 
     def get_schema(
@@ -208,19 +202,19 @@ class SQLServerConnector(BaseConnector):
         schema: Optional[str] = None,
     ) -> Dict[str, str]:
         """
-        Get schema for SQL Server table.
+        Get schema for Teradata table.
 
         Args:
             table: Table name
-            schema: Schema name (defaults to configured schema)
+            schema: Database name (defaults to configured database)
 
         Returns:
             Dictionary mapping column names to data types
         """
         self._validate_connection()
 
-        schema_name = schema or self.schema
-        full_table_name = f"{schema_name}.{table}"
+        database = schema or self.database
+        full_table_name = f"{database}.{table}"
 
         try:
             jdbc_url = self._get_jdbc_url()
@@ -230,6 +224,7 @@ class SQLServerConnector(BaseConnector):
                 .option("dbtable", full_table_name)
                 .option("user", self.username)
                 .option("password", self.password)
+                .option("driver", "com.teradata.jdbc.TeraDriver")
                 .load()
                 .limit(0)
             )
@@ -242,12 +237,12 @@ class SQLServerConnector(BaseConnector):
 
         except Exception as e:
             raise ConnectorException(
-                f"Failed to get schema from SQL Server: {str(e)}"
+                f"Failed to get schema from Teradata: {str(e)}"
             ) from e
 
     def test_connection(self) -> bool:
         """
-        Test SQL Server connection.
+        Test Teradata connection.
 
         Returns:
             True if connection successful
@@ -262,10 +257,11 @@ class SQLServerConnector(BaseConnector):
                 .option("dbtable", "(SELECT 1 AS test) AS t")
                 .option("user", self.username)
                 .option("password", self.password)
+                .option("driver", "com.teradata.jdbc.TeraDriver")
                 .load()
             )
             test_df.collect()
             return True
         except Exception as e:
-            self.logger.error("SQL Server connection test failed", error=str(e))
+            self.logger.error("Teradata connection test failed", error=str(e))
             return False

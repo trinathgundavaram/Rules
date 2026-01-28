@@ -60,19 +60,28 @@ rules-engine/
 │           ├── outputs.tf
 │           ├── versions.tf
 │           ├── terragrunt.hcl
+│           ├── shared/     # Shared Python libraries
+│           │   ├── connectors/
+│           │   ├── rules/
+│           │   ├── metadata/
+│           │   └── utils/
 │           └── modules/    # Reusable Terraform modules
-├── src/                    # Application source code
-│   ├── connectors/         # Data source connectors
-│   ├── rules/              # Rules engine core
-│   ├── metadata/           # Database models & repository
-│   ├── lambda/             # Lambda functions
-│   ├── glue/               # Glue jobs
-│   └── utils/              # Utilities
+│               ├── glue/
+│               │   └── scripts/  # Glue job scripts
+│               ├── lambda/
+│               │   └── scripts/  # Lambda function code
+│               ├── s3/
+│               ├── database/
+│               └── ...
 ├── tests/                  # Test suite
-├── scripts/                # Utility scripts
 ├── sql/                    # Database schema
 └── config/                 # Application configs
 ```
+
+**Key Points:**
+- **Scripts are co-located with infrastructure**: Glue scripts in `modules/glue/scripts/`, Lambda code in `modules/lambda/scripts/`
+- **Shared libraries**: Common Python code in `shared/` directory, automatically included in deployments
+- **Terraform handles packaging**: Lambda functions and Glue scripts are automatically packaged and deployed by Terraform
 
 ## Quick Start
 
@@ -81,7 +90,7 @@ rules-engine/
 - **AWS Account** with appropriate permissions
 - **GitHub Repository** with Actions enabled
 - **GitHub Secrets** configured (see Deployment section)
-- **Python** >= 3.9 (for local development)
+- **Python** >= 3.9 (for local development/testing)
 
 ### Local Development
 
@@ -105,10 +114,9 @@ rules-engine/
 
 The project uses a reusable GitHub Actions workflow for deployment. The workflow is triggered automatically on push to `main` or `develop` branches, or manually via workflow dispatch.
 
-#### Automatic Deployment
+#### Automatic CI
 
-- **Push to `main` branch**: Automatically runs CI checks
-- **Push to `develop` branch**: Automatically runs CI checks
+- **Push to `main` or `develop`**: Automatically runs CI checks (linting, tests, validation)
 - **Pull Request**: Runs CI checks only
 
 #### Manual Deployment
@@ -150,7 +158,7 @@ Required environment variables:
 ### Creating a Rule
 
 ```python
-from src.metadata.repository import MetadataRepository
+from metadata.repository import MetadataRepository
 
 repo = MetadataRepository()
 rule_id = repo.create_rule(
@@ -160,19 +168,6 @@ rule_id = repo.create_rule(
     severity_level="high",
     rule_logic="column RLIKE '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}$'",
     is_reusable=True
-)
-```
-
-### Assigning Rules to Tables
-
-```python
-assignment_id = repo.assign_rule(
-    rule_id=rule_id,
-    source_id=1,
-    schema_name="public",
-    table_name="users",
-    column_names=["email"],
-    execution_frequency="daily"
 )
 ```
 
@@ -210,6 +205,39 @@ aws:
   s3:
     results_bucket: <from-terraform-output>
 ```
+
+## Script Organization
+
+### Glue Jobs
+
+Glue job scripts are located in `module/aws/rules-engine/modules/glue/scripts/`:
+- `bulk_validator.py` - Main validation job
+
+Terraform automatically:
+- Uploads scripts to S3 code bucket
+- Uploads shared libraries to S3
+- Configures Glue job to use the scripts
+
+### Lambda Functions
+
+Lambda function code is located in `module/aws/rules-engine/modules/lambda/scripts/`:
+- `rule_executor/` - Rule execution orchestrator
+- `api_gateway/` - API Gateway backend
+
+Terraform automatically:
+- Packages Lambda code with shared libraries
+- Creates ZIP files
+- Deploys to Lambda
+
+### Shared Libraries
+
+Shared Python libraries are in `module/aws/rules-engine/shared/`:
+- `connectors/` - Data source connectors
+- `rules/` - Rules engine core
+- `metadata/` - Database models & repository
+- `utils/` - Utilities
+
+These are automatically included in both Lambda and Glue deployments.
 
 ## Testing
 
@@ -257,16 +285,19 @@ pip install -r requirements-dev.txt
 pytest
 
 # Format code
-black src/ tests/
+black module/aws/rules-engine/modules/**/scripts/ tests/
 
 # Lint
-flake8 src/ tests/
+flake8 module/aws/rules-engine/modules/**/scripts/ tests/
 ```
 
 ### Making Changes
 
 1. Create a feature branch
-2. Make your changes
+2. Make your changes in the appropriate module folder:
+   - Lambda changes: `module/aws/rules-engine/modules/lambda/scripts/`
+   - Glue changes: `module/aws/rules-engine/modules/glue/scripts/`
+   - Shared library changes: `module/aws/rules-engine/shared/`
 3. Run tests locally
 4. Push to GitHub (CI will run automatically)
 5. Create a pull request

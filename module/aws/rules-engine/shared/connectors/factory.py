@@ -4,16 +4,16 @@ from typing import Any, Dict, Optional
 
 from pyspark.sql import SparkSession
 
-from src.connectors.base import BaseConnector
-from src.connectors.aurora_postgresql import AuroraPostgreSQLConnector
-from src.connectors.databricks import DatabricksConnector
-from src.connectors.redshift import RedshiftConnector
-from src.connectors.s3 import S3Connector
-from src.connectors.sqlserver import SQLServerConnector
-from src.connectors.teradata import TeradataConnector
-from src.metadata.models import SourceType
-from src.utils.exceptions import ConfigurationException
-from src.utils.logger import get_logger
+from connectors.base import BaseConnector
+from connectors.aurora_postgresql import AuroraPostgreSQLConnector
+from connectors.databricks import DatabricksConnector
+from connectors.redshift import RedshiftConnector
+from connectors.s3 import S3Connector
+from connectors.sqlserver import SQLServerConnector
+from connectors.teradata import TeradataConnector
+from metadata.models import SourceType
+from utils.exceptions import ConfigurationException
+from utils.logger import get_logger
 
 
 class ConnectorFactory:

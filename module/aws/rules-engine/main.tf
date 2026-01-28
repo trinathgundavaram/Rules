@@ -139,14 +139,14 @@ module "iam" {
 module "lambda_rule_executor" {
   source = "./modules/lambda"
 
-  function_name = "${var.project_name}-rule-executor-${var.environment}"
+  function_name = "${var.project_name}-rule-executor-${local.env}"
   description   = "Rules Engine - Rule execution orchestrator"
   handler       = "handler.handler"
   runtime       = "python3.11"
   timeout       = 900  # 15 minutes
   memory_size   = 512
 
-  source_path = "${path.module}/../src/lambda/rule_executor"
+  lambda_name = "rule_executor"
   output_path = "${path.module}/lambda_packages/rule_executor.zip"
 
   environment_variables = {
@@ -157,7 +157,7 @@ module "lambda_rule_executor" {
     METADATA_DB_PASSWORD = local.db_password
     GLUE_JOB_NAME        = module.glue.job_name
     RESULTS_BUCKET       = local.results_bucket
-    ENVIRONMENT          = var.environment
+    ENVIRONMENT          = local.env
   }
 
   iam_role_arn = module.iam.lambda_execution_role_arn
@@ -173,14 +173,14 @@ module "lambda_rule_executor" {
 module "lambda_api_gateway" {
   source = "./modules/lambda"
 
-  function_name = "${var.project_name}-api-gateway-${var.environment}"
+  function_name = "${var.project_name}-api-gateway-${local.env}"
   description   = "Rules Engine - API Gateway backend"
   handler       = "app.lambda_handler"
   runtime       = "python3.11"
   timeout       = 30
   memory_size   = 512
 
-  source_path = "${path.module}/../src/lambda/api_gateway"
+  lambda_name = "api_gateway"
   output_path = "${path.module}/lambda_packages/api_gateway.zip"
 
   environment_variables = {
@@ -189,7 +189,7 @@ module "lambda_api_gateway" {
     METADATA_DB_NAME     = var.database_name
     METADATA_DB_USER     = var.database_username
     METADATA_DB_PASSWORD = local.db_password
-    ENVIRONMENT          = var.environment
+    ENVIRONMENT          = local.env
   }
 
   iam_role_arn = module.iam.lambda_execution_role_arn
@@ -232,8 +232,9 @@ module "glue" {
   environment  = local.env
   aws_region   = var.region != "" ? var.region : var.aws_region
 
-  job_name = "${var.project_name}-bulk-validator-${var.environment}"
-  script_path = "s3://${local.code_bucket}/glue/bulk_validator.py"
+  job_name = "${var.project_name}-bulk-validator-${local.env}"
+  script_name = "bulk_validator.py"
+  code_bucket = local.code_bucket
 
   glue_role_arn = module.iam.glue_role_arn
   temp_bucket   = local.temp_bucket

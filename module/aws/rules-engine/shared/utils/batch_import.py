@@ -5,10 +5,10 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from src.metadata.models import RuleAssignment, RuleCategory, RuleType, SeverityLevel
-from src.metadata.repository import MetadataRepository
-from src.utils.exceptions import MetadataException
-from src.utils.logger import get_logger
+from metadata.models import RuleAssignment, RuleCategory, RuleType, SeverityLevel
+from metadata.repository import MetadataRepository
+from utils.exceptions import MetadataException
+from utils.logger import get_logger
 
 
 class BatchRuleImporter:

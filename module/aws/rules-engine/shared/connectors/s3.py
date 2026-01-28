@@ -8,9 +8,9 @@ from botocore.exceptions import ClientError
 from pyspark.sql import DataFrame
 from pyspark.sql import SparkSession
 
-from src.connectors.base import BaseConnector
-from src.utils.exceptions import ConnectionError, ConnectorException
-from src.utils.logger import get_logger
+from connectors.base import BaseConnector
+from utils.exceptions import ConnectionError, ConnectorException
+from utils.logger import get_logger
 
 
 class S3Connector(BaseConnector):

@@ -1,8 +1,8 @@
 # Project Structure
 
-## Restructured for Terragrunt + Reusable GitHub Actions Workflow
+## Restructured for Terragrunt + Co-located Scripts
 
-This document describes the project structure after restructuring for Terragrunt deployment with reusable GitHub Actions workflows.
+This document describes the project structure after restructuring for Terragrunt deployment with scripts co-located with their infrastructure components.
 
 ## Directory Structure
 
@@ -19,65 +19,50 @@ Rules/
 │       └── rules-engine/       # Terragrunt module
 │           ├── main.tf         # Main infrastructure
 │           ├── variables.tf    # Input variables
-│           ├── outputs.tf     # Output values
-│           ├── versions.tf    # Provider versions
-│           ├── terragrunt.hcl # Terragrunt configuration
+│           ├── outputs.tf      # Output values
+│           ├── versions.tf     # Provider versions
+│           ├── terragrunt.hcl  # Terragrunt configuration
 │           ├── lambda_packages/ # Lambda ZIP files (gitignored)
-│           └── modules/       # Reusable Terraform modules
+│           │
+│           ├── shared/         # Shared Python libraries
+│           │   ├── connectors/ # Data source connectors
+│           │   ├── rules/      # Rules engine core
+│           │   ├── metadata/   # Database models & repository
+│           │   └── utils/      # Utilities
+│           │
+│           └── modules/        # Reusable Terraform modules
+│               ├── glue/
+│               │   ├── main.tf
+│               │   ├── variables.tf
+│               │   ├── outputs.tf
+│               │   └── scripts/  # Glue job scripts
+│               │       ├── __init__.py
+│               │       └── bulk_validator.py
+│               │
+│               ├── lambda/
+│               │   ├── main.tf
+│               │   ├── variables.tf
+│               │   ├── outputs.tf
+│               │   └── scripts/  # Lambda function code
+│               │       ├── rule_executor/
+│               │       │   ├── __init__.py
+│               │       │   └── handler.py
+│               │       └── api_gateway/
+│               │           ├── __init__.py
+│               │           └── app.py
+│               │
 │               ├── s3/
 │               ├── database/
-│               ├── lambda/
-│               ├── glue/
 │               ├── api_gateway/
 │               ├── iam/
 │               ├── secrets/
 │               ├── eventbridge/
 │               └── monitoring/
 │
-├── src/                        # Application source code
-│   ├── connectors/             # Data source connectors
-│   │   ├── base.py
-│   │   ├── databricks.py
-│   │   ├── sqlserver.py
-│   │   ├── teradata.py
-│   │   ├── s3.py
-│   │   ├── redshift.py
-│   │   ├── aurora_postgresql.py
-│   │   └── factory.py
-│   │
-│   ├── rules/                  # Rules engine core
-│   │   ├── executor.py
-│   │   ├── parser.py
-│   │   ├── single_field.py
-│   │   ├── multi_field.py
-│   │   └── functions.py
-│   │
-│   ├── metadata/               # Database models & repository
-│   │   ├── models.py
-│   │   └── repository.py
-│   │
-│   ├── lambda/                 # Lambda functions
-│   │   ├── rule_executor/
-│   │   │   └── handler.py
-│   │   └── api_gateway/
-│   │       └── app.py
-│   │
-│   ├── glue/                   # Glue jobs
-│   │   └── bulk_validator.py
-│   │
-│   └── utils/                  # Utilities
-│       ├── logger.py
-│       ├── metrics.py
-│       ├── exceptions.py
-│       └── batch_import.py
-│
 ├── tests/                      # Test suite
 │   ├── unit/                   # Unit tests
 │   ├── integration/            # Integration tests
 │   └── fixtures/               # Test fixtures
-│
-├── scripts/                    # Utility scripts
-│   └── package_lambdas.sh     # Lambda packaging script
 │
 ├── sql/                        # Database schema
 │   └── metadata_schema.sql     # Initial database schema
@@ -112,25 +97,44 @@ Rules/
 
 The following files/directories were removed during restructuring:
 
+- ❌ `src/` directory - Moved to `module/aws/rules-engine/shared/` and module-specific folders
+- ❌ `scripts/` directory - Removed packaging script (Terraform handles it now)
 - ❌ `terraform/` directory - Moved to `module/aws/rules-engine/`
 - ❌ `terraform/deploy.sh` - Not needed with GitHub Actions
-- ❌ `terraform/README.md` - Merged into main README
 - ❌ `terraform/terraform.tfvars.*` - Using Terragrunt inputs instead
-- ❌ Old `deploy.yml` - Replaced with reusable workflow_call pattern
 
 ## Files Added/Updated
 
 - ✅ `module/aws/rules-engine/` - Complete Terraform module structure
+- ✅ `module/aws/rules-engine/shared/` - Shared Python libraries
+- ✅ `module/aws/rules-engine/modules/glue/scripts/` - Glue job scripts
+- ✅ `module/aws/rules-engine/modules/lambda/scripts/` - Lambda function code
 - ✅ `module/aws/rules-engine/terragrunt.hcl` - Terragrunt configuration
 - ✅ `.github/workflows/deploy.yml` - Reusable workflow (workflow_call)
 - ✅ `.github/workflows/workflow.yml` - Main workflow that calls deploy.yml
 - ✅ `.env.*` files - Environment variable files (gitignored)
-- ✅ Updated `README.md` - Focused on Terragrunt + GitHub Actions
+- ✅ Updated `README.md` - Focused on new structure
 - ✅ Updated `DEPLOYMENT.md` - Comprehensive deployment guide
-- ✅ Updated `.gitignore` - Added Terragrunt-specific ignores
-- ✅ Updated `scripts/package_lambdas.sh` - Updated paths for module structure
+- ✅ Updated `.gitignore` - Added Terragrunt and package-specific ignores
 
 ## Key Features
+
+### Script Co-location
+
+**Glue Scripts**:
+- Located in `module/aws/rules-engine/modules/glue/scripts/`
+- Automatically uploaded to S3 by Terraform
+- Shared libraries uploaded separately and referenced via `--extra-py-files`
+
+**Lambda Functions**:
+- Located in `module/aws/rules-engine/modules/lambda/scripts/`
+- Automatically packaged with shared libraries by Terraform
+- ZIP files created in `lambda_packages/` directory
+
+**Shared Libraries**:
+- Located in `module/aws/rules-engine/shared/`
+- Automatically included in both Lambda and Glue deployments
+- No manual copying or packaging needed
 
 ### Reusable GitHub Actions Workflow
 
@@ -139,8 +143,7 @@ The `.github/workflows/deploy.yml` workflow is a **reusable workflow** (workflow
 - Runs on self-hosted runner: `MA-Analytics-Runner`
 - Uses OIDC for AWS authentication
 - Loads environment variables from `.env` files
-- Packages Lambda functions
-- Executes Terragrunt actions
+- Executes Terragrunt actions (Terraform handles script packaging)
 
 ### Main Workflow
 
@@ -154,6 +157,7 @@ The `.github/workflows/workflow.yml` workflow:
 
 The module at `module/aws/rules-engine/`:
 - Contains all Terraform code
+- Contains all application scripts
 - Uses Terragrunt for configuration management
 - Maps GitHub Actions variables to Terraform variables
 - Generates provider configuration dynamically
@@ -172,12 +176,37 @@ Manual Trigger or Auto (if main/develop)
     ↓
 Call Reusable Workflow (deploy.yml)
     ↓
-[Load Env Vars] → [OIDC Auth] → [Package Lambdas] → [Terragrunt Plan/Apply]
+[Load Env Vars] → [OIDC Auth] → [Terragrunt Plan/Apply]
+    ↓
+Terraform Operations:
+  ├─▶ Package Lambda functions (with shared libs)
+  ├─▶ Upload Glue scripts to S3
+  ├─▶ Upload shared libraries to S3
+  └─▶ Deploy infrastructure
     ↓
 Infrastructure Deployed
     ↓
 [Initialize DB] → [Verify] → [Output Results]
 ```
+
+## Script Deployment Details
+
+### Glue Scripts
+
+1. **Source**: `module/aws/rules-engine/modules/glue/scripts/*.py`
+2. **Terraform Action**: Uploads to `s3://code-bucket/glue/scripts/`
+3. **Shared Libs**: Uploads to `s3://code-bucket/glue/shared/`
+4. **Glue Job Config**: References S3 script path, includes shared libs via `--extra-py-files`
+
+### Lambda Functions
+
+1. **Source**: `module/aws/rules-engine/modules/lambda/scripts/{lambda_name}/`
+2. **Terraform Action**:
+   - Copies Lambda code to temp directory
+   - Copies shared libraries to temp directory
+   - Creates ZIP archive
+   - Deploys to Lambda
+3. **Package Location**: `module/aws/rules-engine/lambda_packages/{lambda_name}.zip`
 
 ## Environment Variables
 
@@ -216,12 +245,22 @@ The Terragrunt configuration (`module/aws/rules-engine/terragrunt.hcl`) automati
 3. **Set up GitHub Environments**: Configure dev/test/prod
 4. **Deploy**: Use GitHub Actions workflow or Terragrunt locally
 5. **Initialize Database**: Run `sql/metadata_schema.sql`
-6. **Package Lambdas**: Run `./scripts/package_lambdas.sh` (or let GitHub Actions do it)
 
 ## Maintenance
 
+- **Update Scripts**: Edit in `module/aws/rules-engine/modules/{glue|lambda}/scripts/`
+- **Update Shared Libraries**: Edit in `module/aws/rules-engine/shared/`
 - **Update Dependencies**: Update `requirements.txt` and run tests
 - **Terraform Updates**: Modify modules in `module/aws/rules-engine/modules/`
 - **Add Tests**: Add to `tests/unit/` or `tests/integration/`
 - **Documentation**: Update `README.md` and `DEPLOYMENT.md`
 - **Environment Variables**: Update `.env.*` files as needed
+
+## Benefits of This Structure
+
+1. **Co-location**: Scripts are with their infrastructure, easier to find and maintain
+2. **Automatic Deployment**: Terraform handles all packaging and deployment
+3. **No Manual Steps**: No separate packaging scripts needed
+4. **Version Control**: All code in one place, easier to track changes
+5. **Consistency**: Same deployment process for all components
+6. **Shared Libraries**: Automatically included, no manual copying

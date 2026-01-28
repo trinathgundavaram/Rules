@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Optional
 from pyspark.sql import DataFrame
 from pyspark.sql import SparkSession
 
-from src.utils.exceptions import ConnectorException
-from src.utils.logger import get_logger
+from utils.exceptions import ConnectorException
+from utils.logger import get_logger
 
 
 class BaseConnector(ABC):

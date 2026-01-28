@@ -1,14 +1,59 @@
 # Lambda Function Module
 
+# Create a temporary directory with Lambda code and shared libraries
+locals {
+  lambda_source_dir = "${path.module}/scripts/${var.lambda_name}"
+  shared_libs_dir   = "${path.module}/../../shared"
+  package_dir       = "${path.module}/.packages/${var.lambda_name}"
+}
+
+# Copy Lambda code and shared libraries to package directory
+resource "null_resource" "prepare_lambda_package" {
+  triggers = {
+    lambda_code_hash = sha256(join("", [
+      for f in fileset(local.lambda_source_dir, "**") : 
+      fileexists("${local.lambda_source_dir}/${f}") ? filesha256("${local.lambda_source_dir}/${f}") : ""
+    ]))
+    shared_libs_hash = sha256(join("", [
+      for f in fileset(local.shared_libs_dir, "**/*.py") : 
+      fileexists("${local.shared_libs_dir}/${f}") ? filesha256("${local.shared_libs_dir}/${f}") : ""
+    ]))
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      mkdir -p ${local.package_dir}
+      if [ -d "${local.lambda_source_dir}" ]; then
+        cp -r ${local.lambda_source_dir}/* ${local.package_dir}/ 2>/dev/null || true
+      fi
+      if [ -d "${local.shared_libs_dir}" ]; then
+        cp -r ${local.shared_libs_dir}/* ${local.package_dir}/ 2>/dev/null || true
+      fi
+    EOT
+  }
+}
+
+# Create ZIP archive
 data "archive_file" "lambda_zip" {
+  depends_on = [null_resource.prepare_lambda_package]
+  
   type        = "zip"
-  source_dir  = var.source_path
+  source_dir  = local.package_dir
   output_path = var.output_path
-  excludes    = ["__pycache__", "*.pyc", ".pytest_cache", "*.pyc"]
+  
+  excludes = [
+    "__pycache__",
+    "*.pyc",
+    ".pytest_cache",
+    "*.pyc",
+    "*.md",
+    "*.txt",
+    ".git*"
+  ]
 }
 
 resource "aws_lambda_function" "main" {
-  filename         = var.output_path
+  filename         = data.archive_file.lambda_zip.output_path
   function_name    = var.function_name
   role            = var.iam_role_arn
   handler         = var.handler
@@ -22,9 +67,12 @@ resource "aws_lambda_function" "main" {
     variables = var.environment_variables
   }
 
-  vpc_config {
-    subnet_ids         = var.vpc_config.subnet_ids
-    security_group_ids = var.vpc_config.security_group_ids
+  dynamic "vpc_config" {
+    for_each = var.vpc_config != null ? [1] : []
+    content {
+      subnet_ids         = var.vpc_config.subnet_ids
+      security_group_ids = var.vpc_config.security_group_ids
+    }
   }
 
   tags = merge(var.tags, {

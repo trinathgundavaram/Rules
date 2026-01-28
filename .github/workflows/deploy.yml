@@ -67,10 +67,6 @@ jobs:
         with:
           python-version: "3.11.6"
 
-      - name: Package Lambda Functions
-        run: |
-          ./scripts/package_lambdas.sh
-
       - name: Terraform ${{ inputs.action }}
         id: terraform-action
         uses: zilvertonz/shared-github-actions/deploy/terragrunt@v0

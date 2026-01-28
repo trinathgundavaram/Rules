@@ -32,8 +32,8 @@ variable "memory_size" {
   default     = 256
 }
 
-variable "source_path" {
-  description = "Path to Lambda source code"
+variable "lambda_name" {
+  description = "Name of the Lambda function directory (e.g., rule_executor, api_gateway)"
   type        = string
 }
 

@@ -5,10 +5,10 @@ from typing import Any, Dict, List, Optional
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, count
 
-from src.metadata.models import RuleCategory, ValidationRule
-from src.rules.parser import parse_rule_expression
-from src.utils.exceptions import RuleExecutionException
-from src.utils.logger import get_logger
+from metadata.models import RuleCategory, ValidationRule
+from rules.parser import parse_rule_expression
+from utils.exceptions import RuleExecutionException
+from utils.logger import get_logger
 
 
 class MultiFieldValidator:
@@ -138,7 +138,7 @@ class MultiFieldValidator:
         Returns:
             Validation results dictionary
         """
-        from src.rules.functions import RuleFunctions
+        from rules.functions import RuleFunctions
 
         if relationship == "equals":
             rule_expression = RuleFunctions.equals(col(column1), col(column2))

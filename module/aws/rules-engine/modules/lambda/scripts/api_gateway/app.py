@@ -5,20 +5,26 @@ import os
 from typing import List, Optional
 from uuid import UUID
 
+import sys
+import os
+
+# Add shared libraries to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../shared'))
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from src.metadata.models import (
+from metadata.models import (
     DataSource,
     ExecutionLog,
     RuleAssignment,
     ValidationResult,
     ValidationRule,
 )
-from src.metadata.repository import MetadataRepository
-from src.rules.executor import RuleExecutor
-from src.utils.logger import get_logger
+from metadata.repository import MetadataRepository
+from rules.executor import RuleExecutor
+from utils.logger import get_logger
 
 # Initialize FastAPI app
 app = FastAPI(title="Rules Engine API", version="1.0.0")

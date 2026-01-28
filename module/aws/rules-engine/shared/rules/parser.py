@@ -7,9 +7,9 @@ from typing import Any, Dict, List, Optional
 from pyspark.sql import Column
 from pyspark.sql.functions import col
 
-from src.rules.functions import FUNCTION_REGISTRY, RuleFunctions
-from src.utils.exceptions import RuleParseException
-from src.utils.logger import get_logger
+from rules.functions import FUNCTION_REGISTRY, RuleFunctions
+from utils.exceptions import RuleParseException
+from utils.logger import get_logger
 
 
 class RuleParser:

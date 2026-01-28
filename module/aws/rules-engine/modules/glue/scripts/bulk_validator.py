@@ -9,9 +9,15 @@ from awsglue.job import Job
 from awsglue.utils import getResolvedOptions
 from pyspark.context import SparkContext
 
-from src.metadata.repository import MetadataRepository
-from src.rules.executor import RuleExecutor
-from src.utils.logger import get_logger
+import sys
+import os
+
+# Add shared libraries to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../shared'))
+
+from metadata.repository import MetadataRepository
+from rules.executor import RuleExecutor
+from utils.logger import get_logger
 
 # Initialize Glue context
 args = getResolvedOptions(sys.argv, ["JOB_NAME", "assignment_id", "execution_id"])

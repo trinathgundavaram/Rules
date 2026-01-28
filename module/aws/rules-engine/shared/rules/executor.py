@@ -7,21 +7,21 @@ from uuid import UUID, uuid4
 from pyspark.sql import DataFrame
 from pyspark.sql import SparkSession
 
-from src.connectors.base import BaseConnector
-from src.connectors.factory import ConnectorFactory
-from src.metadata.models import (
+from connectors.base import BaseConnector
+from connectors.factory import ConnectorFactory
+from metadata.models import (
     ExecutionLog,
     ExecutionStatus,
     RuleAssignment,
     ValidationResult,
     ValidationStatus,
 )
-from src.metadata.repository import MetadataRepository
-from src.rules.multi_field import MultiFieldValidator
-from src.rules.single_field import SingleFieldValidator
-from src.utils.exceptions import RuleExecutionException
-from src.utils.logger import get_logger
-from src.utils.metrics import get_metrics_collector
+from metadata.repository import MetadataRepository
+from rules.multi_field import MultiFieldValidator
+from rules.single_field import SingleFieldValidator
+from utils.exceptions import RuleExecutionException
+from utils.logger import get_logger
+from utils.metrics import get_metrics_collector
 
 
 class RuleExecutor:

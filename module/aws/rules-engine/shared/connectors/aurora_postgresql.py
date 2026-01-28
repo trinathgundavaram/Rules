@@ -1,17 +1,17 @@
-"""Redshift connector implementation."""
+"""Aurora PostgreSQL connector implementation."""
 
 from typing import Any, Dict, List, Optional
 
 from pyspark.sql import DataFrame
 from pyspark.sql import SparkSession
 
-from src.connectors.base import BaseConnector
-from src.utils.exceptions import ConnectionError, ConnectorException
-from src.utils.logger import get_logger
+from connectors.base import BaseConnector
+from utils.exceptions import ConnectionError, ConnectorException
+from utils.logger import get_logger
 
 
-class RedshiftConnector(BaseConnector):
-    """Connector for Amazon Redshift data sources."""
+class AuroraPostgreSQLConnector(BaseConnector):
+    """Connector for Aurora PostgreSQL data sources."""
 
     def __init__(
         self,
@@ -19,7 +19,7 @@ class RedshiftConnector(BaseConnector):
         spark_session: Optional[SparkSession] = None,
     ):
         """
-        Initialize Redshift connector.
+        Initialize Aurora PostgreSQL connector.
 
         Args:
             connection_config: Must contain 'host', 'database', 'username',
@@ -28,35 +28,36 @@ class RedshiftConnector(BaseConnector):
         """
         super().__init__(connection_config, spark_session)
         self.host = connection_config.get("host")
-        self.port = connection_config.get("port", 5439)
+        self.port = connection_config.get("port", 5432)
         self.database = connection_config.get("database")
         self.username = connection_config.get("username")
         self.password = connection_config.get("password")
         self.schema = connection_config.get("schema", "public")
-        self.s3_temp_dir = connection_config.get(
-            "s3_temp_dir"
-        )  # Required for Redshift writes
+        self.sslmode = connection_config.get("sslmode", "require")
 
         if not all([self.host, self.database, self.username, self.password]):
             raise ConnectorException(
-                "Redshift connection requires host, database, username, and password"
+                "Aurora PostgreSQL connection requires host, database, username, and password"
             )
 
         if not self.spark_session:
-            raise ConnectorException("Spark session is required for Redshift connector")
+            raise ConnectorException(
+                "Spark session is required for Aurora PostgreSQL connector"
+            )
 
     def connect(self) -> None:
-        """Establish connection to Redshift."""
+        """Establish connection to Aurora PostgreSQL."""
         try:
             self.logger.info(
-                "Connecting to Redshift",
+                "Connecting to Aurora PostgreSQL",
                 host=self.host,
                 database=self.database,
             )
 
-            # Redshift uses PostgreSQL JDBC driver
+            # PostgreSQL JDBC URL
             jdbc_url = (
-                f"jdbc:redshift://{self.host}:{self.port}/{self.database}"
+                f"jdbc:postgresql://{self.host}:{self.port}/{self.database}"
+                f"?sslmode={self.sslmode}"
             )
 
             # Test connection
@@ -66,25 +67,30 @@ class RedshiftConnector(BaseConnector):
                 .option("dbtable", "(SELECT 1 AS test) AS t")
                 .option("user", self.username)
                 .option("password", self.password)
-                .option("driver", "com.amazon.redshift.jdbc.Driver")
+                .option("driver", "org.postgresql.Driver")
                 .load()
             )
             test_df.collect()
 
             self._is_connected = True
-            self.logger.info("Successfully connected to Redshift")
+            self.logger.info("Successfully connected to Aurora PostgreSQL")
 
         except Exception as e:
-            raise ConnectionError(f"Failed to connect to Redshift: {str(e)}") from e
+            raise ConnectionError(
+                f"Failed to connect to Aurora PostgreSQL: {str(e)}"
+            ) from e
 
     def disconnect(self) -> None:
-        """Close Redshift connection."""
+        """Close Aurora PostgreSQL connection."""
         self._is_connected = False
-        self.logger.info("Disconnected from Redshift")
+        self.logger.info("Disconnected from Aurora PostgreSQL")
 
     def _get_jdbc_url(self) -> str:
-        """Get JDBC URL for Redshift."""
-        return f"jdbc:redshift://{self.host}:{self.port}/{self.database}"
+        """Get JDBC URL for Aurora PostgreSQL."""
+        return (
+            f"jdbc:postgresql://{self.host}:{self.port}/{self.database}"
+            f"?sslmode={self.sslmode}"
+        )
 
     def read_data(
         self,
@@ -96,7 +102,7 @@ class RedshiftConnector(BaseConnector):
         limit: Optional[int] = None,
     ) -> DataFrame:
         """
-        Read data from Redshift.
+        Read data from Aurora PostgreSQL.
 
         Args:
             query: SQL query (preferred method)
@@ -116,26 +122,28 @@ class RedshiftConnector(BaseConnector):
             schema_name = schema or self.schema
 
             if query:
-                self.logger.info("Executing SQL query on Redshift")
+                self.logger.info("Executing SQL query on Aurora PostgreSQL")
                 df = (
                     self.spark_session.read.format("jdbc")
                     .option("url", jdbc_url)
                     .option("query", query)
                     .option("user", self.username)
                     .option("password", self.password)
-                    .option("driver", "com.amazon.redshift.jdbc.Driver")
+                    .option("driver", "org.postgresql.Driver")
                     .load()
                 )
             elif table:
                 full_table_name = f"{schema_name}.{table}"
-                self.logger.info("Reading table from Redshift", table=full_table_name)
+                self.logger.info(
+                    "Reading table from Aurora PostgreSQL", table=full_table_name
+                )
                 df = (
                     self.spark_session.read.format("jdbc")
                     .option("url", jdbc_url)
                     .option("dbtable", full_table_name)
                     .option("user", self.username)
                     .option("password", self.password)
-                    .option("driver", "com.amazon.redshift.jdbc.Driver")
+                    .option("driver", "org.postgresql.Driver")
                     .load()
                 )
             else:
@@ -151,7 +159,7 @@ class RedshiftConnector(BaseConnector):
 
         except Exception as e:
             raise ConnectorException(
-                f"Failed to read data from Redshift: {str(e)}"
+                f"Failed to read data from Aurora PostgreSQL: {str(e)}"
             ) from e
 
     def write_results(
@@ -162,47 +170,37 @@ class RedshiftConnector(BaseConnector):
         partition_by: Optional[List[str]] = None,
     ) -> None:
         """
-        Write results to Redshift table.
+        Write results to Aurora PostgreSQL table.
 
         Args:
             data: DataFrame to write
             destination: Table name (can include schema.table)
             mode: Write mode
-            partition_by: Columns to partition by (uses S3 staging)
+            partition_by: Not supported for PostgreSQL
         """
         self._validate_connection()
 
-        if not self.s3_temp_dir:
-            raise ConnectorException(
-                "S3 temporary directory is required for Redshift writes"
-            )
+        if partition_by:
+            self.logger.warning("Partitioning not supported for PostgreSQL writes")
 
-        self.logger.info("Writing data to Redshift", destination=destination, mode=mode)
+        self.logger.info(
+            "Writing data to Aurora PostgreSQL", destination=destination, mode=mode
+        )
 
         try:
             jdbc_url = self._get_jdbc_url()
 
-            writer = (
-                data.write.format("jdbc")
-                .mode(mode)
-                .option("url", jdbc_url)
-                .option("dbtable", destination)
-                .option("user", self.username)
-                .option("password", self.password)
-                .option("driver", "com.amazon.redshift.jdbc.Driver")
-                .option("tempdir", self.s3_temp_dir)
-            )
+            data.write.format("jdbc").mode(mode).option("url", jdbc_url).option(
+                "dbtable", destination
+            ).option("user", self.username).option("password", self.password).option(
+                "driver", "org.postgresql.Driver"
+            ).save()
 
-            if partition_by:
-                writer = writer.option("distkey", partition_by[0])
-
-            writer.save()
-
-            self.logger.info("Successfully wrote data to Redshift")
+            self.logger.info("Successfully wrote data to Aurora PostgreSQL")
 
         except Exception as e:
             raise ConnectorException(
-                f"Failed to write data to Redshift: {str(e)}"
+                f"Failed to write data to Aurora PostgreSQL: {str(e)}"
             ) from e
 
     def get_schema(
@@ -211,7 +209,7 @@ class RedshiftConnector(BaseConnector):
         schema: Optional[str] = None,
     ) -> Dict[str, str]:
         """
-        Get schema for Redshift table.
+        Get schema for Aurora PostgreSQL table.
 
         Args:
             table: Table name
@@ -233,7 +231,7 @@ class RedshiftConnector(BaseConnector):
                 .option("dbtable", full_table_name)
                 .option("user", self.username)
                 .option("password", self.password)
-                .option("driver", "com.amazon.redshift.jdbc.Driver")
+                .option("driver", "org.postgresql.Driver")
                 .load()
                 .limit(0)
             )
@@ -246,12 +244,12 @@ class RedshiftConnector(BaseConnector):
 
         except Exception as e:
             raise ConnectorException(
-                f"Failed to get schema from Redshift: {str(e)}"
+                f"Failed to get schema from Aurora PostgreSQL: {str(e)}"
             ) from e
 
     def test_connection(self) -> bool:
         """
-        Test Redshift connection.
+        Test Aurora PostgreSQL connection.
 
         Returns:
             True if connection successful
@@ -266,11 +264,13 @@ class RedshiftConnector(BaseConnector):
                 .option("dbtable", "(SELECT 1 AS test) AS t")
                 .option("user", self.username)
                 .option("password", self.password)
-                .option("driver", "com.amazon.redshift.jdbc.Driver")
+                .option("driver", "org.postgresql.Driver")
                 .load()
             )
             test_df.collect()
             return True
         except Exception as e:
-            self.logger.error("Redshift connection test failed", error=str(e))
+            self.logger.error(
+                "Aurora PostgreSQL connection test failed", error=str(e)
+            )
             return False

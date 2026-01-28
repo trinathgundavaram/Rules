@@ -14,8 +14,15 @@ variable "job_name" {
   type = string
 }
 
-variable "script_path" {
-  type = string
+variable "script_name" {
+  description = "Name of the Glue script file (e.g., bulk_validator.py)"
+  type        = string
+  default     = "bulk_validator.py"
+}
+
+variable "code_bucket" {
+  description = "S3 bucket for code storage"
+  type        = string
 }
 
 variable "glue_role_arn" {

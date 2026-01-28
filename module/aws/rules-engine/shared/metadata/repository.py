@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import QueuePool
 
-from src.metadata.models import (
+from metadata.models import (
     DataSource,
     ExecutionLog,
     QualityScore,
@@ -20,8 +20,8 @@ from src.metadata.models import (
     ValidationResult,
     ValidationRule,
 )
-from src.utils.exceptions import MetadataException
-from src.utils.logger import get_logger
+from utils.exceptions import MetadataException
+from utils.logger import get_logger
 
 
 class MetadataRepository:

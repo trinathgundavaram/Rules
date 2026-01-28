@@ -6,10 +6,15 @@ from typing import Any, Dict
 from uuid import UUID
 
 import boto3
+import sys
+import os
 
-from src.metadata.repository import MetadataRepository
-from src.rules.executor import RuleExecutor
-from src.utils.logger import get_logger
+# Add shared libraries to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../shared'))
+
+from metadata.repository import MetadataRepository
+from rules.executor import RuleExecutor
+from utils.logger import get_logger
 
 # Initialize clients
 glue_client = boto3.client("glue")
