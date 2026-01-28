@@ -33,13 +33,19 @@ variable "memory_size" {
 }
 
 variable "source_path" {
-  description = "Path to Lambda source code"
+  description = "Path to Lambda source code or zip file"
   type        = string
 }
 
 variable "output_path" {
   description = "Path for Lambda deployment package"
   type        = string
+}
+
+variable "source_code_hash" {
+  description = "Base64-encoded SHA256 hash of the source code"
+  type        = string
+  default     = null
 }
 
 variable "iam_role_arn" {

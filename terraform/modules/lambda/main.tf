@@ -1,18 +1,11 @@
 # Lambda Function Module
 
-data "archive_file" "lambda_zip" {
-  type        = "zip"
-  source_dir  = var.source_path
-  output_path = var.output_path
-  excludes    = ["__pycache__", "*.pyc", ".pytest_cache", "*.pyc"]
-}
-
 resource "aws_lambda_function" "main" {
   filename         = var.output_path
   function_name    = var.function_name
   role            = var.iam_role_arn
   handler         = var.handler
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+  source_code_hash = var.source_code_hash != null ? var.source_code_hash : filebase64sha256(var.output_path)
   runtime         = var.runtime
   timeout         = var.timeout
   memory_size     = var.memory_size
@@ -22,18 +15,17 @@ resource "aws_lambda_function" "main" {
     variables = var.environment_variables
   }
 
-  vpc_config {
-    subnet_ids         = var.vpc_config.subnet_ids
-    security_group_ids = var.vpc_config.security_group_ids
+  dynamic "vpc_config" {
+    for_each = var.vpc_config != null ? [1] : []
+    content {
+      subnet_ids         = var.vpc_config.subnet_ids
+      security_group_ids = var.vpc_config.security_group_ids
+    }
   }
 
   tags = merge(var.tags, {
     Name = var.function_name
   })
-
-  depends_on = [
-    data.archive_file.lambda_zip
-  ]
 }
 
 resource "aws_lambda_function_event_invoke_config" "main" {

@@ -1,0 +1,13 @@
+# Example backend configuration for Terragrunt
+# Terragrunt will generate this automatically based on your terragrunt.hcl
+
+# Uncomment to use remote state
+# terraform {
+#   backend "s3" {
+#     bucket         = "your-terraform-state-bucket"
+#     key            = "rules-engine/terraform.tfstate"
+#     region         = "us-east-1"
+#     encrypt        = true
+#     dynamodb_table = "terraform-state-lock"
+#   }
+# }

@@ -199,3 +199,9 @@ variable "alert_sns_topic_arn" {
   type        = string
   default     = ""
 }
+
+variable "use_s3_for_lambda_code" {
+  description = "Use S3 for Lambda code deployment (for packages > 50MB)"
+  type        = bool
+  default     = false
+}
