@@ -1,0 +1,135 @@
+{
+  "Comment": "Validation workflow for Data Rules Engine",
+  "StartAt": "FetchActiveAssignments",
+  "States": {
+    "FetchActiveAssignments": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "rules-executor-${Environment}",
+        "Payload": {
+          "action": "fetch_assignments"
+        }
+      },
+      "Next": "DetermineExecutionStrategy",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleError"
+        }
+      ]
+    },
+    "DetermineExecutionStrategy": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Payload.requires_glue",
+          "BooleanEquals": true,
+          "Next": "StartGlueJob"
+        }
+      ],
+      "Default": "ExecuteInLambda"
+    },
+    "StartGlueJob": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "bulk-validator-${Environment}",
+        "Arguments": {
+          "--rule-assignment-ids": "$.Payload.assignment_ids",
+          "--metadata-db-secret-arn": "${MetadataDbSecretArn}",
+          "--s3-results-bucket": "${ResultsBucket}"
+        }
+      },
+      "Next": "UpdateExecutionLog",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleError"
+        }
+      ]
+    },
+    "ExecuteInLambda": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "rules-executor-${Environment}",
+        "Payload": {
+          "action": "execute_validation",
+          "assignment_ids": "$.Payload.assignment_ids"
+        }
+      },
+      "Next": "UpdateExecutionLog",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleError"
+        }
+      ]
+    },
+    "UpdateExecutionLog": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "rules-executor-${Environment}",
+        "Payload": {
+          "action": "update_log",
+          "execution_id": "$.execution_id",
+          "status": "success"
+        }
+      },
+      "Next": "CheckFailures",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleError"
+        }
+      ]
+    },
+    "CheckFailures": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Payload.has_failures",
+          "BooleanEquals": true,
+          "Next": "SendNotification"
+        }
+      ],
+      "Default": "Success"
+    },
+    "SendNotification": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${AlertTopicArn}",
+        "Message": "Validation failures detected. Check results in UI.",
+        "Subject": "Rules Engine - Validation Failures"
+      },
+      "Next": "Success"
+    },
+    "HandleError": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "notification-handler-${Environment}",
+        "Payload": {
+          "error": "$.error",
+          "execution_id": "$.execution_id"
+        }
+      },
+      "Next": "Failure"
+    },
+    "Success": {
+      "Type": "Succeed"
+    },
+    "Failure": {
+      "Type": "Fail",
+      "Error": "ValidationExecutionFailed",
+      "Cause": "Validation workflow failed. Check logs for details."
+    }
+  }
+}
