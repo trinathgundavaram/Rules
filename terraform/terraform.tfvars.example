@@ -1,0 +1,55 @@
+# Rules Engine Framework - Example Terraform Variables
+# Copy this file to terraform.tfvars and customize for your environment
+
+project_name = "rules-engine"
+environment  = "dev"
+aws_region   = "us-east-1"
+
+# Database Configuration
+database_name     = "rules_engine"
+database_username = "rulesadmin"
+# database_password = "your-secure-password"  # Leave null to auto-generate
+
+database_instance_class = "db.r6g.large"
+database_instance_count = 2
+database_engine_version = "15.4"
+database_backup_retention = 7
+database_storage_encrypted = true
+
+# Networking
+vpc_id = "vpc-xxxxxxxxx"
+database_subnet_ids = [
+  "subnet-xxxxxxxxx",
+  "subnet-yyyyyyyyy"
+]
+lambda_subnet_ids = [
+  "subnet-xxxxxxxxx",
+  "subnet-yyyyyyyyy"
+]
+enable_lambda_vpc = false  # Set to true if Lambda needs VPC access
+
+# S3 Configuration
+enable_s3_versioning = true
+enable_s3_encryption = true
+
+# Glue Configuration
+glue_worker_type     = "G.1X"
+glue_number_of_workers = 2
+glue_version         = "4.0"
+
+# API Gateway Configuration
+enable_api_cors = true
+api_cors_origins = [
+  "https://your-domain.com",
+  "http://localhost:3000"  # For local development
+]
+
+# EventBridge Schedules
+eventbridge_schedules = {
+  daily_validation = "cron(0 2 * * ? *)"  # Daily at 2 AM UTC
+  hourly_validation = "cron(0 * * * ? *)"  # Every hour
+}
+
+# Monitoring
+enable_cloudwatch_alarms = true
+# alert_sns_topic_arn = "arn:aws:sns:us-east-1:123456789012:alerts"  # Optional

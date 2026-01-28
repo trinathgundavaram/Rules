@@ -1,0 +1,43 @@
+# Production Environment Configuration
+
+database:
+  host: ${METADATA_DB_HOST}  # From environment variable
+  port: 5432
+  name: ${METADATA_DB_NAME}
+  username: ${METADATA_DB_USER}
+  password: ${METADATA_DB_PASSWORD}  # From Secrets Manager
+  pool_size: 20
+  max_overflow: 40
+
+aws:
+  region: us-east-1
+  s3:
+    results_bucket: rules-engine-results-prod
+    temp_bucket: rules-engine-temp-prod
+  glue:
+    job_name: rules-engine-bulk-validator-prod
+    worker_type: G.2X
+    number_of_workers: 10
+  lambda:
+    rule_executor_timeout: 900
+    api_gateway_timeout: 30
+  sns:
+    alert_topic_arn: ${ALERT_TOPIC_ARN}
+
+logging:
+  level: INFO
+  cloudwatch_log_group: /aws/lambda/rules-engine-prod
+
+metrics:
+  namespace: RulesEngine/Prod
+  enabled: true
+
+security:
+  secrets_manager:
+    enabled: true
+    secret_name_prefix: rules-engine/prod/
+
+features:
+  enable_caching: true
+  enable_incremental_validation: true
+  max_sample_size: 10000

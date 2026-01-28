@@ -1,0 +1,43 @@
+# Development Environment Configuration
+
+database:
+  host: localhost
+  port: 5432
+  name: rules_engine_dev
+  username: postgres
+  password: postgres
+  pool_size: 5
+  max_overflow: 10
+
+aws:
+  region: us-east-1
+  s3:
+    results_bucket: rules-engine-results-dev
+    temp_bucket: rules-engine-temp-dev
+  glue:
+    job_name: rules-engine-bulk-validator-dev
+    worker_type: G.1X
+    number_of_workers: 2
+  lambda:
+    rule_executor_timeout: 900  # 15 minutes
+    api_gateway_timeout: 30
+  sns:
+    alert_topic_arn: arn:aws:sns:us-east-1:123456789012:rules-engine-alerts-dev
+
+logging:
+  level: DEBUG
+  cloudwatch_log_group: /aws/lambda/rules-engine-dev
+
+metrics:
+  namespace: RulesEngine/Dev
+  enabled: true
+
+security:
+  secrets_manager:
+    enabled: true
+    secret_name_prefix: rules-engine/dev/
+
+features:
+  enable_caching: true
+  enable_incremental_validation: true
+  max_sample_size: 1000

@@ -1,0 +1,316 @@
+# Rules Engine Framework - Main Terraform Configuration
+# This is the root module that orchestrates all AWS resources
+
+terraform {
+  required_version = ">= 1.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.1"
+    }
+  }
+
+  # Uncomment and configure backend for remote state
+  # backend "s3" {
+  #   bucket         = "your-terraform-state-bucket"
+  #   key            = "rules-engine/terraform.tfstate"
+  #   region         = "us-east-1"
+  #   encrypt        = true
+  #   dynamodb_table = "terraform-state-lock"
+  # }
+}
+
+provider "aws" {
+  region = var.aws_region
+
+  default_tags {
+    tags = {
+      Project     = "RulesEngine"
+      Environment = var.environment
+      ManagedBy   = "Terraform"
+    }
+  }
+}
+
+# Generate random password for database if not provided
+resource "random_password" "db_password" {
+  count   = var.database_password == null ? 1 : 0
+  length  = 32
+  special = true
+}
+
+# Local values for common configurations
+locals {
+  db_password = var.database_password != null ? var.database_password : random_password.db_password[0].result
+  
+  common_tags = {
+    Project     = "RulesEngine"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+
+  # S3 bucket names
+  results_bucket = "${var.project_name}-results-${var.environment}"
+  temp_bucket    = "${var.project_name}-temp-${var.environment}"
+  code_bucket    = "${var.project_name}-code-${var.environment}"
+}
+
+# Data sources
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+# ============================================================================
+# S3 BUCKETS
+# ============================================================================
+
+module "s3" {
+  source = "./modules/s3"
+
+  project_name = var.project_name
+  environment  = var.environment
+  aws_region   = var.aws_region
+
+  results_bucket_name = local.results_bucket
+  temp_bucket_name   = local.temp_bucket
+  code_bucket_name   = local.code_bucket
+
+  enable_versioning = var.enable_s3_versioning
+  enable_encryption = var.enable_s3_encryption
+
+  tags = local.common_tags
+}
+
+# ============================================================================
+# AURORA POSTGRESQL DATABASE
+# ============================================================================
+
+module "database" {
+  source = "./modules/database"
+
+  project_name = var.project_name
+  environment  = var.environment
+  aws_region   = var.aws_region
+
+  db_name     = var.database_name
+  db_username = var.database_username
+  db_password = local.db_password
+
+  db_instance_class    = var.database_instance_class
+  db_instance_count    = var.database_instance_count
+  db_engine_version     = var.database_engine_version
+  db_backup_retention  = var.database_backup_retention
+  db_storage_encrypted = var.database_storage_encrypted
+
+  vpc_id             = var.vpc_id
+  subnet_ids         = var.database_subnet_ids
+  security_group_ids = var.database_security_group_ids
+
+  enable_monitoring = var.enable_database_monitoring
+  monitoring_interval = var.database_monitoring_interval
+
+  tags = local.common_tags
+}
+
+# ============================================================================
+# SECRETS MANAGER
+# ============================================================================
+
+module "secrets" {
+  source = "./modules/secrets"
+
+  project_name = var.project_name
+  environment  = var.environment
+
+  database_secret_name = "${var.project_name}-db-credentials-${var.environment}"
+  database_host        = module.database.endpoint
+  database_port        = module.database.port
+  database_name        = var.database_name
+  database_username     = var.database_username
+  database_password     = local.db_password
+
+  tags = local.common_tags
+}
+
+# ============================================================================
+# IAM ROLES AND POLICIES
+# ============================================================================
+
+module "iam" {
+  source = "./modules/iam"
+
+  project_name = var.project_name
+  environment  = var.environment
+  aws_region   = var.aws_region
+  account_id   = data.aws_caller_identity.current.account_id
+
+  results_bucket_arn = module.s3.results_bucket_arn
+  temp_bucket_arn    = module.s3.temp_bucket_arn
+  code_bucket_arn   = module.s3.code_bucket_arn
+  database_secret_arn = module.secrets.database_secret_arn
+  enable_lambda_vpc = var.enable_lambda_vpc
+  vpc_id = var.vpc_id
+
+  tags = local.common_tags
+}
+
+# ============================================================================
+# LAMBDA FUNCTIONS
+# ============================================================================
+
+module "lambda_rule_executor" {
+  source = "./modules/lambda"
+
+  function_name = "${var.project_name}-rule-executor-${var.environment}"
+  description   = "Rules Engine - Rule execution orchestrator"
+  handler       = "handler.handler"
+  runtime       = "python3.11"
+  timeout       = 900  # 15 minutes
+  memory_size   = 512
+
+  source_path = "${path.module}/../src/lambda/rule_executor"
+  output_path = "${path.module}/lambda_packages/rule_executor.zip"
+
+  environment_variables = {
+    METADATA_DB_HOST     = module.database.endpoint
+    METADATA_DB_PORT     = tostring(module.database.port)
+    METADATA_DB_NAME     = var.database_name
+    METADATA_DB_USER     = var.database_username
+    METADATA_DB_PASSWORD = local.db_password
+    GLUE_JOB_NAME        = module.glue.job_name
+    RESULTS_BUCKET       = local.results_bucket
+    ENVIRONMENT          = var.environment
+  }
+
+  iam_role_arn = module.iam.lambda_execution_role_arn
+
+  vpc_config = var.enable_lambda_vpc && length(var.lambda_subnet_ids) > 0 ? {
+    subnet_ids         = var.lambda_subnet_ids
+    security_group_ids = [module.iam.lambda_security_group_id]
+  } : null
+
+  tags = local.common_tags
+}
+
+module "lambda_api_gateway" {
+  source = "./modules/lambda"
+
+  function_name = "${var.project_name}-api-gateway-${var.environment}"
+  description   = "Rules Engine - API Gateway backend"
+  handler       = "app.lambda_handler"
+  runtime       = "python3.11"
+  timeout       = 30
+  memory_size   = 512
+
+  source_path = "${path.module}/../src/lambda/api_gateway"
+  output_path = "${path.module}/lambda_packages/api_gateway.zip"
+
+  environment_variables = {
+    METADATA_DB_HOST     = module.database.endpoint
+    METADATA_DB_PORT     = tostring(module.database.port)
+    METADATA_DB_NAME     = var.database_name
+    METADATA_DB_USER     = var.database_username
+    METADATA_DB_PASSWORD = local.db_password
+    ENVIRONMENT          = var.environment
+  }
+
+  iam_role_arn = module.iam.lambda_execution_role_arn
+
+  vpc_config = var.enable_lambda_vpc && length(var.lambda_subnet_ids) > 0 ? {
+    subnet_ids         = var.lambda_subnet_ids
+    security_group_ids = [module.iam.lambda_security_group_id]
+  } : null
+
+  tags = local.common_tags
+}
+
+# ============================================================================
+# API GATEWAY
+# ============================================================================
+
+module "api_gateway" {
+  source = "./modules/api_gateway"
+
+  project_name = var.project_name
+  environment  = var.environment
+
+  lambda_function_arn = module.lambda_api_gateway.function_arn
+  lambda_function_name = module.lambda_api_gateway.function_name
+
+  enable_cors = var.enable_api_cors
+  cors_origins = var.api_cors_origins
+
+  tags = local.common_tags
+}
+
+# ============================================================================
+# GLUE JOBS
+# ============================================================================
+
+module "glue" {
+  source = "./modules/glue"
+
+  project_name = var.project_name
+  environment  = var.environment
+  aws_region   = var.aws_region
+
+  job_name = "${var.project_name}-bulk-validator-${var.environment}"
+  script_path = "s3://${local.code_bucket}/glue/bulk_validator.py"
+
+  glue_role_arn = module.iam.glue_role_arn
+  temp_bucket   = local.temp_bucket
+  results_bucket = local.results_bucket
+
+  database_secret_arn = module.secrets.database_secret_arn
+
+  worker_type     = var.glue_worker_type
+  number_of_workers = var.glue_number_of_workers
+  glue_version    = var.glue_version
+
+  tags = local.common_tags
+}
+
+# ============================================================================
+# EVENTBRIDGE RULES
+# ============================================================================
+
+module "eventbridge" {
+  source = "./modules/eventbridge"
+
+  project_name = var.project_name
+  environment  = var.environment
+
+  rule_executor_lambda_arn = module.lambda_rule_executor.function_arn
+  rule_executor_lambda_name = module.lambda_rule_executor.function_name
+
+  schedule_expressions = var.eventbridge_schedules
+
+  tags = local.common_tags
+}
+
+# ============================================================================
+# CLOUDWATCH LOGS AND ALARMS
+# ============================================================================
+
+module "monitoring" {
+  source = "./modules/monitoring"
+
+  project_name = var.project_name
+  environment  = var.environment
+
+  lambda_function_names = [
+    module.lambda_rule_executor.function_name,
+    module.lambda_api_gateway.function_name,
+  ]
+
+  glue_job_name = module.glue.job_name
+
+  sns_topic_arn = var.alert_sns_topic_arn
+  enable_alarms = var.enable_cloudwatch_alarms
+
+  tags = local.common_tags
+}
