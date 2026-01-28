@@ -68,3 +68,20 @@ glue_temp/
 # Lambda packages
 lambda_packages/
 *.zip
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+terraform.tfstate.*
+*.tfplan
+*.tfvars
+.terraformrc
+terraform.rc
+
+# Terragrunt
+.terragrunt-cache/
+terragrunt.hcl.lock
+**/provider_override.tf
+**/.terragrunt-cache/

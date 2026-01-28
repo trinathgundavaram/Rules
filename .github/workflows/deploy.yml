@@ -1,0 +1,89 @@
+name: Deploy Infrastructure
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      action:
+        type: string
+        required: true
+      module:
+        type: string
+        required: true
+    outputs:
+      terraform_outputs:
+        description: Outputs from terraform action
+        value: ${{ jobs.Deploy.outputs.terraform_outputs }}
+
+jobs:
+  Deploy:
+    name: Deploy Workflow
+    runs-on: MA-Analytics-Runner
+    env:
+      TF_VAR_tdv_password_dev: ${{ secrets.TF_VAR_TDV_PASSWORD_DEV }}
+      TF_VAR_tdv_password_test: ${{ secrets.TF_VAR_TDV_PASSWORD_TEST }}
+      TF_VAR_tdv_password_prod: ${{ secrets.TF_VAR_TDV_PASSWORD_PROD }}
+      TF_VAR_ETL_oss_prod: ${{ secrets.ETL_OSS_TDV_PROD }}
+    environment:
+      name: ${{ inputs.environment }}
+
+    outputs:
+      terraform_outputs: ${{ steps.terraform-action.outputs.terraform_outputs }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set GitHub Read Access Token
+        run: git config --global url."https://${{ secrets.ORG_REPO_READ_ACCESS }}@github.com".insteadOf "https://github.com"
+
+      - name: Load Environment Variables
+        uses: zilvertonz/shared-github-actions/utility/load-dot-env@v1
+        with:
+          env_name: ${{ inputs.environment }}
+
+      - name: Load Common Variables
+        uses: zilvertonz/shared-github-actions/utility/load-dot-env@v1
+        with:
+          env_name: common
+
+      - name: Authenticate via OIDC Role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.REGION }}
+          role-to-assume: "arn:aws:iam::${{ env.ACCOUNT_NUMBER }}:role/Enterprise/gov-compliance-it-deployer"
+
+      - name: Upgrade pip and install pipx
+        run: |
+          python3 -m pip install --upgrade pip
+
+      - name: Install Poetry
+        run: pipx install poetry==1.7.1
+
+      - name: Set up Python 3.11.16
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.6"
+
+      - name: Package Lambda Functions
+        run: |
+          ./scripts/package_lambdas.sh
+
+      - name: Terraform ${{ inputs.action }}
+        id: terraform-action
+        uses: zilvertonz/shared-github-actions/deploy/terragrunt@v0
+        env:
+          TF_VAR_account_number: ${{ env.ACCOUNT_NUMBER }}
+          TF_VAR_region: ${{ env.REGION }}
+          TF_VAR_env: ${{ inputs.environment }}
+          TF_VAR_repo_name: ${{ github.event.repository.name }}
+          TF_VAR_branch_name: ${{ github.ref_name }}
+        with:
+          module: module/aws/${{ inputs.module }}
+          terraform_action: ${{ inputs.action }}
+          workspace: ${{ inputs.environment }}
+          token: ${{ secrets.ORG_REPO_READ_ACCESS }}
+          tf_version: ${{ env.TF_VERSION }}
+          tg_version: ${{ env.TG_VERSION }}

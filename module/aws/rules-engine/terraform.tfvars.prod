@@ -1,0 +1,53 @@
+# Production Environment Configuration
+
+project_name = "rules-engine"
+environment  = "prod"
+aws_region   = "us-east-1"
+
+# Database Configuration
+database_name     = "rules_engine_prod"
+database_username = "rulesadmin"
+# database_password = null  # Auto-generated if not provided - STORE IN SECRETS MANAGER
+
+database_instance_class = "db.r6g.xlarge"
+database_instance_count = 2
+database_engine_version = "15.4"
+database_backup_retention = 30
+database_storage_encrypted = true
+
+# Networking - Update with your VPC details
+vpc_id = "vpc-xxxxxxxxx"  # Replace with your VPC ID
+database_subnet_ids = [
+  "subnet-xxxxxxxxx",  # Replace with your subnet IDs
+  "subnet-yyyyyyyyy"
+]
+lambda_subnet_ids = [
+  "subnet-xxxxxxxxx",  # Replace with your subnet IDs
+  "subnet-yyyyyyyyy"
+]
+enable_lambda_vpc = true
+
+# S3 Configuration
+enable_s3_versioning = true
+enable_s3_encryption = true
+
+# Glue Configuration
+glue_worker_type     = "G.2X"
+glue_number_of_workers = 10
+glue_version         = "4.0"
+
+# API Gateway Configuration
+enable_api_cors = true
+api_cors_origins = [
+  "https://your-production-domain.com"  # Restrict to your domain
+]
+
+# EventBridge Schedules
+eventbridge_schedules = {
+  daily_validation = "cron(0 2 * * ? *)"  # Daily at 2 AM UTC
+  hourly_validation = "cron(0 * * * ? *)"  # Every hour
+}
+
+# Monitoring
+enable_cloudwatch_alarms = true
+alert_sns_topic_arn = "arn:aws:sns:us-east-1:123456789012:alerts-prod"  # Update with your SNS topic

@@ -1,0 +1,74 @@
+name: Deploy Rules Engine
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'module/**'
+      - 'src/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+      action:
+        description: 'Terraform action'
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+
+jobs:
+  ci:
+    name: CI Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-cov black flake8
+
+      - name: Run Black
+        run: |
+          black --check src/ tests/
+
+      - name: Run Flake8
+        run: |
+          flake8 src/ tests/ --max-line-length=120 --extend-ignore=E203,W503
+
+      - name: Run unit tests
+        run: |
+          pytest tests/unit/ -v --cov=src --cov-report=xml
+
+  deploy:
+    name: Deploy to ${{ inputs.environment || 'dev' }}
+    needs: [ci]
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: ${{ inputs.environment || 'dev' }}
+      action: ${{ inputs.action || 'plan' }}
+      module: rules-engine
+    secrets: inherit

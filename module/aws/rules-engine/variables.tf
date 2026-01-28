@@ -9,10 +9,42 @@ variable "project_name" {
 variable "environment" {
   description = "Environment name (dev, test, prod)"
   type        = string
+  default     = "dev"
   validation {
     condition     = contains(["dev", "test", "staging", "prod"], var.environment)
     error_message = "Environment must be one of: dev, test, staging, prod"
   }
+}
+
+# Variables from Terragrunt/GitHub Actions
+variable "env" {
+  description = "Environment name from Terragrunt (maps to environment)"
+  type        = string
+  default     = "dev"
+}
+
+variable "region" {
+  description = "AWS region from Terragrunt"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "account_number" {
+  description = "AWS account number"
+  type        = string
+  default     = ""
+}
+
+variable "repo_name" {
+  description = "Repository name"
+  type        = string
+  default     = ""
+}
+
+variable "branch_name" {
+  description = "Branch name"
+  type        = string
+  default     = ""
 }
 
 variable "aws_region" {

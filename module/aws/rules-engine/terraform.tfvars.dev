@@ -1,0 +1,52 @@
+# Development Environment Configuration
+
+project_name = "rules-engine"
+environment  = "dev"
+aws_region   = "us-east-1"
+
+# Database Configuration
+database_name     = "rules_engine_dev"
+database_username = "rulesadmin"
+# database_password = null  # Auto-generated if not provided
+
+database_instance_class = "db.t3.medium"
+database_instance_count = 2
+database_engine_version = "15.4"
+database_backup_retention = 7
+database_storage_encrypted = true
+
+# Networking - Update with your VPC details
+vpc_id = "vpc-xxxxxxxxx"  # Replace with your VPC ID
+database_subnet_ids = [
+  "subnet-xxxxxxxxx",  # Replace with your subnet IDs
+  "subnet-yyyyyyyyy"
+]
+lambda_subnet_ids = [
+  "subnet-xxxxxxxxx",  # Replace with your subnet IDs
+  "subnet-yyyyyyyyy"
+]
+enable_lambda_vpc = true
+
+# S3 Configuration
+enable_s3_versioning = true
+enable_s3_encryption = true
+
+# Glue Configuration
+glue_worker_type     = "G.1X"
+glue_number_of_workers = 2
+glue_version         = "4.0"
+
+# API Gateway Configuration
+enable_api_cors = true
+api_cors_origins = [
+  "*"  # Restrict in production
+]
+
+# EventBridge Schedules
+eventbridge_schedules = {
+  daily_validation = "cron(0 2 * * ? *)"  # Daily at 2 AM UTC
+}
+
+# Monitoring
+enable_cloudwatch_alarms = true
+# alert_sns_topic_arn = "arn:aws:sns:us-east-1:123456789012:alerts-dev"
